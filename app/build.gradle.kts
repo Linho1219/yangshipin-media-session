@@ -12,8 +12,8 @@ android {
         applicationId = "cc.linho.yangshipin.mediasession"
         minSdk = 28
         targetSdk = 37
-        versionCode = 4
-        versionName = "0.4.0"
+        versionCode = 10
+        versionName = "0.7.3"
     }
 
     buildTypes {

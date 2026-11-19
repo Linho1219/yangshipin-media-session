@@ -20,6 +20,10 @@ public final class ModuleMain extends XposedModule {
     static final String TAG = "YspMediaSession";
     static final String TARGET_PACKAGE = "com.cctv.yangshipin.app.androidp";
     private static final String SYSTEM_UI_PACKAGE = "com.android.systemui";
+    private static final String XIAOMI_FITNESS_PACKAGE = "com.mi.health";
+    private static final String XIAOMI_FITNESS_DEVICE_PROCESS = "com.mi.health:device";
+    private static final String MILINK_PACKAGE = "com.milink.service";
+    private static final String MILINK_UI_PROCESS = "com.milink.service:ui";
 
     private static final String SERVICE_CLASS =
             "com.tencent.videolite.android.component.player.common.backstageNotification.BackstagePlayService";
@@ -40,6 +44,30 @@ public final class ModuleMain extends XposedModule {
 
     @Override
     public void onPackageReady(PackageReadyParam param) {
+        if (MILINK_PACKAGE.equals(param.getPackageName())
+                && MILINK_UI_PROCESS.equals(Application.getProcessName())) {
+            try {
+                installMiLinkWearAgentHook(param.getClassLoader());
+                log(Log.INFO, TAG, "Enabled MiLink WearAgent live-media repair");
+            } catch (Throwable error) {
+                log(Log.ERROR, TAG, "Unable to install MiLink WearAgent hook", error);
+            }
+            return;
+        }
+
+        if (XIAOMI_FITNESS_PACKAGE.equals(param.getPackageName())
+                && XIAOMI_FITNESS_DEVICE_PROCESS.equals(Application.getProcessName())) {
+            try {
+                installXiaomiFitnessMilinkHook(param.getClassLoader());
+                log(Log.INFO, TAG, "Enabled Xiaomi Fitness Band 10 live-media repair");
+            } catch (Throwable error) {
+                // Xiaomi Fitness changes between releases. A failed compatibility
+                // hook must not interfere with the app's device connection process.
+                log(Log.ERROR, TAG, "Unable to install Xiaomi Fitness Milink hook", error);
+            }
+            return;
+        }
+
         if (SYSTEM_UI_PACKAGE.equals(param.getPackageName())
                 && SYSTEM_UI_PACKAGE.equals(Application.getProcessName())) {
             try {
@@ -70,6 +98,37 @@ public final class ModuleMain extends XposedModule {
         } catch (Throwable error) {
             log(Log.ERROR, TAG, "Failed to install hooks", error);
         }
+    }
+
+    private void installMiLinkWearAgentHook(ClassLoader classLoader)
+            throws ReflectiveOperationException {
+        Class<?> localController = Class.forName(
+                "com.miui.circulate.wear.agent.device.controller.f", false, classLoader);
+        Class<?> shareDevice = Class.forName(
+                "com.xiaomi.wear.protobuf.nano.FusionCenterProto$FusionCenter$ShareDevice",
+                false, classLoader);
+        Method convertToShareDevice = localController.getDeclaredMethod("K", shareDevice);
+        convertToShareDevice.setAccessible(true);
+        hook(convertToShareDevice).intercept(chain -> {
+            Object result = chain.proceed();
+            MiLinkWearAgentBridge.repairLivePacket(chain.getThisObject(), chain.getArg(0));
+            return result;
+        });
+    }
+
+    private void installXiaomiFitnessMilinkHook(ClassLoader classLoader)
+            throws ReflectiveOperationException {
+        Class<?> milinkExt = Class.forName(
+                "com.xiaomi.fitness.milink.util.MilinkExtKt", false, classLoader);
+        Class<?> controller = Class.forName(
+                "com.xiaomi.fitness.milink.circulate.BaseDeviceController",
+                false, classLoader);
+        Method buildShareDevice = milinkExt.getDeclaredMethod("buildShareDevice", controller);
+        hook(buildShareDevice).intercept(chain -> {
+            Object result = chain.proceed();
+            XiaomiFitnessMilinkBridge.repairLivePacket(chain.getArg(0), result);
+            return result;
+        });
     }
 
     private void installSystemUiMediaActionsHook(ClassLoader classLoader)

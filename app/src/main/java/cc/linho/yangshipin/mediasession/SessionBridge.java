@@ -53,6 +53,13 @@ final class SessionBridge {
     private static final int EVENT_NEXT = 400;
     private static final int EVENT_PREVIOUS = 500;
 
+    // Xiaomi's SystemUI export API starts a one-second position callback only while
+    // playback is active. A negative/unknown position is forwarded on every tick and
+    // Band 10 Pro treats that update as "no music". Live streams have no seekable
+    // timeline, but zero is still a valid stable position and is accepted by Android,
+    // SystemUI and the band without inventing a fake duration.
+    private static final long LIVE_POSITION_MS = 0L;
+
     private static final long BASE_ACTIONS =
             PlaybackState.ACTION_PLAY
                     | PlaybackState.ACTION_PAUSE
@@ -331,7 +338,7 @@ final class SessionBridge {
         float speed = playing ? 1.0f : 0.0f;
         PlaybackState.Builder builder = new PlaybackState.Builder()
                 .setActions(actions)
-                .setState(state, PlaybackState.PLAYBACK_POSITION_UNKNOWN, speed,
+                .setState(state, LIVE_POSITION_MS, speed,
                         SystemClock.elapsedRealtime());
         mediaSession.setPlaybackState(builder.build());
         mediaSession.setActive(true);
